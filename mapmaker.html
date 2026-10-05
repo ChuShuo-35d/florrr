@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>地图绘制器 · florr 地图</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; overflow:hidden; background:#1a1c22; color:#e8e8f0;
+    font-family:"Segoe UI", "Microsoft YaHei", sans-serif; font-size:13px; }
+  #app { display:flex; height:100%; }
+  #left { width:232px; padding:10px; overflow-y:auto; background:#22252d; border-right:1px solid #333743; }
+  #mid { flex:1; position:relative; }
+  #cv { display:block; width:100%; height:100%; cursor:crosshair; }
+  #right { width:300px; padding:10px; overflow-y:auto; background:#22252d; border-left:1px solid #333743; }
+  h3 { margin:10px 0 6px; font-size:13px; color:#8fd4ff; border-bottom:1px solid #343a47; padding-bottom:4px; }
+  h3:first-child { margin-top:0; }
+  label { display:block; margin:6px 0 2px; color:#a9b0c0; font-size:12px; }
+  input[type=text], input[type=number], select, textarea {
+    width:100%; background:#14161b; color:#e8e8f0; border:1px solid #3a4050; border-radius:6px;
+    padding:5px 7px; font-size:12px; font-family:inherit; }
+  textarea { height:110px; font-family:Consolas, monospace; font-size:11px; }
+  button { background:#2d323d; color:#dbe3f0; border:1px solid #46506310; border-radius:7px;
+    padding:6px 9px; font-size:12px; cursor:pointer; font-family:inherit; }
+  button:hover { background:#39404e; }
+  button.on { background:#2f6fd0; border-color:#5aa0ff; color:#fff; font-weight:600; }
+  button.wide { width:100%; margin-top:6px; }
+  button.danger { border-color:#7a2a2a; color:#ff9b9b; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; }
+  .row > * { flex:1; }
+  .tool { flex:1 1 46%; }
+  .hint { color:#7f8798; font-size:11px; line-height:1.5; }
+  .list { margin-top:6px; }
+  .item { background:#1c1f26; border:1px solid #333a48; border-radius:7px; padding:6px 7px; margin-bottom:5px; font-size:11.5px; }
+  .item b { color:#ffd77a; }
+  .item .mini { display:flex; gap:4px; flex-wrap:wrap; margin-top:4px; }
+  .item .mini button { padding:2px 6px; font-size:11px; }
+  .mobs { display:grid; grid-template-columns:1fr 1fr; gap:2px 6px; margin-top:4px; }
+  .mobs label { display:flex; align-items:center; gap:4px; margin:0; color:#cfd6e4; font-size:11.5px; }
+  .swatch { width:12px; height:12px; border-radius:3px; display:inline-block; border:1px solid #0006; vertical-align:-2px; }
+  #status { position:absolute; left:10px; bottom:10px; background:#000000aa; border:1px solid #3a4050;
+    border-radius:7px; padding:4px 9px; font-size:11.5px; color:#bcd; pointer-events:none; }
+  #legend { position:absolute; right:10px; top:10px; background:#000000aa; border:1px solid #3a4050;
+    border-radius:7px; padding:6px 9px; font-size:11px; color:#bcd; pointer-events:none; line-height:1.6; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="left">
+    <h3>地图属性</h3>
+    <label>地图 ID(英文，存档用)</label><input id="fId" type="text" value="my_map">
+    <label>地图名字(游戏里显示)</label><input id="fName" type="text" value="我的地图">
+    <label>默认地面</label><select id="fGround"></select>
+    <label>地图大小(边长，px)</label><input id="fSize" type="number" value="48000" step="1200" min="4000">
+    <label>格子大小(px)</label><select id="fCell">
+      <option value="240">240(最细)</option>
+      <option value="480" selected>480</option>
+      <option value="960">960(最粗)</option>
+    </select>
+    <label style="display:flex;align-items:center;gap:6px;margin-top:8px;">
+      <input id="fMagic" type="checkbox" style="width:auto"> 只有魔法变种怪
+    </label>
+    <label>代替原本的地图</label>
+    <select id="fReplace">
+      <option value="">不代替（作为新地图加进去）</option>
+      <option value="world">大世界</option>
+      <option value="garden">花园</option>
+      <option value="desert">沙漠</option>
+      <option value="ocean">海洋</option>
+      <option value="jungle">丛林</option>
+      <option value="bio">生化</option>
+    </select>
+    <label>代替后显示的名字（留空 = 用原来那张图的名字）</label>
+    <input id="fReplaceName" type="text" placeholder="例如：花园">
+    <div class="hint" id="replaceWarn" style="color:#ffd447"></div>
+
+    <h3>工具</h3>
+    <div class="row">
+      <button class="tool on" data-tool="ground">地面</button>
+      <button class="tool" data-tool="wall">墙/障碍</button>
+      <button class="tool" data-tool="fill">填充(油漆桶)</button>
+      <button class="tool" data-tool="erase">橡皮</button>
+      <button class="tool" data-tool="select">选区</button>
+      <button class="tool" data-tool="spawn">出生点</button>
+      <button class="tool" data-tool="area">刷怪区</button>
+      <button class="tool" data-tool="fixed">固定怪</button>
+      <button class="tool" data-tool="portal">传送门</button>
+      <button class="tool" data-tool="pan">拖动视图</button>
+    </div>
+    <label id="brushLabel">笔刷大小(格) · 当前工具：地面</label>
+    <div class="row">
+      <button class="brush on" data-brush="1">1</button>
+      <button class="brush" data-brush="2">2</button>
+      <button class="brush" data-brush="3">3</button>
+      <button class="brush" data-brush="5">5</button>
+      <button class="brush" data-brush="9">9</button>
+    </div>
+    <label>填充工具填什么</label>
+    <div class="row">
+      <button class="fillm on" data-fm="ground">地面</button>
+      <button class="fillm" data-fm="wall">墙</button>
+    </div>
+    <label>选区怎么划</label>
+    <div class="row">
+      <button class="selm on" data-sm="rect">框选</button>
+      <button class="selm" data-sm="line">划线</button>
+    </div>
+    <button class="wide" id="selClearBtn">清除选区</button>
+    <label>当前地面(地面工具用)</label>
+    <div class="row" id="groundPick"></div>
+    <label>当前障碍样式(墙工具用)</label>
+    <div class="row" id="wallPick"></div>
+    <button class="wide" id="fitBtn">视角：整张地图</button>
+    <button class="wide" id="spawnCenterBtn">出生点放到地图中心</button>
+    <div class="hint" id="spawnWarn" style="color:#ff9b9b;margin-top:4px;"></div>
+
+    <h3>怎么用</h3>
+    <div class="hint">
+      1. 定好地图大小/格子，用「地面」「墙/障碍」画地形——障碍可以在左边选<b>样式</b>（墙体/树/石头/栅栏/水晶，碰撞都一样）；大块区域用<b>「填充(油漆桶)」</b>点一下铺满连通区域（可切换填地面还是填障碍）。<br>
+      2. 「刷怪区」拖一个框 → 在右边勾选这区能出的怪、上限、品质。<br>
+      3. 「固定怪」「传送门」点一下就摆一个；<b>出生点必须自己摆</b>（点「出生点」工具再点画布），不摆的话玩家从地图正中心出生。<br>
+      4. 摆错了用「橡皮」点一下：点到传送门/固定怪就删掉它，没点中才擦地形格子（也可以选中后按 Del）。<br>
+      5. <b>「选区」</b>工具：<b>框选</b>拖一个矩形；<b>划线</b>随手画一个封闭图形、图形<b>内部</b>整片选中。选好后去右边「选区操作」，调好<b>区域等级</b>和要出的怪，点<b>「✔ 确认」</b>才会生效（确认前会提示"将新建/更新区域#几"）；也可以整片删掉地面/墙体/传送门/所有东西。<br>
+      6. 点「导出 JSON」保存文件，发给我 → 我放进游戏；<br>
+      &nbsp;&nbsp;&nbsp;或者你自己打开游戏 → 开发者 → 自定义地图 → 粘贴 JSON → 导入地图。<br>
+      滚轮缩放，右键拖动平移，Del 删除选中的东西。
+    </div>
+  </div>
+
+  <div id="mid">
+    <canvas id="cv"></canvas>
+    <div id="status"></div>
+    <div id="legend"></div>
+  </div>
+
+  <div id="right">
+    <h3>刷怪区设置(新建/选中的)</h3>
+    <label>每区怪数量上限</label><input id="aCap" type="number" value="18" min="1">
+    <label>这区的怪物品质(留空=按区域自动)</label>
+    <select id="aRarity"><option value="">自动</option></select>
+    <div class="mobs" id="aKinds"></div>
+    <label>区域列表（重叠时等级高的生效）</label>
+    <div class="list" id="areaList"></div>
+
+    <h3>选区操作 <span id="selInfo" class="hint"></span></h3>
+    <div class="hint">左边选「选区」工具：<b>框选</b>=拖一个矩形；<b>划线</b>=随手画一个封闭图形，
+      图形<b>内部</b>会被整片选中。<br>
+      区域重叠时按<b>高等级覆盖低等级</b>：高等级区域里不会被低等级区域盖掉，低等级也盖不动高等级。</div>
+    <label>区域等级（品质）</label><select id="selRarity"></select>
+    <div class="hint">可生成的怪 = 上面「刷怪区设置」里勾的那些；上限也用上面那个。</div>
+    <button class="wide" id="selApplyBtn">✔ 确认：把选区设成区域</button>
+    <div class="hint" id="selPreview" style="color:#ffd447"></div>
+    <button class="wide danger" id="selDelAllBtn">删除该区域所有东西</button>
+    <div class="row">
+      <button id="selDelWallBtn">删除该区域墙体</button>
+      <button id="selDelGroundBtn">删除该区域地面</button>
+    </div>
+    <div class="row">
+      <button id="selDelPortalBtn">删除该区域传送门</button>
+      <button id="selDelFixedBtn">删除该区域固定怪</button>
+    </div>
+    <button class="wide" id="selClearBtn2">清除选区</button>
+
+    <h3>固定怪设置</h3>
+    <div class="row">
+      <select id="xKind"></select>
+      <select id="xRarity"></select>
+    </div>
+    <label style="display:flex;align-items:center;gap:6px;">
+      <input id="xVariant" type="checkbox" style="width:auto"> 魔法变种
+    </label>
+    <div class="list" id="fixedList"></div>
+
+    <h3>传送门设置</h3>
+    <label>目标地图</label><select id="pTo"></select>
+    <label>到达后站的坐标(留空=目标图上次位置)</label>
+    <div class="row"><input id="pTx" type="number" placeholder="x"><input id="pTy" type="number" placeholder="y"></div>
+    <div class="list" id="portalList"></div>
+
+    <h3>导入 / 导出</h3>
+    <div class="row">
+      <button id="saveBtn" class="on">导出 JSON</button>
+      <button id="copyBtn">复制 JSON</button>
+    </div>
+    <button class="wide" id="newBtn">新建空地图</button>
+    <label>粘贴之前导出的 JSON 继续编辑</label>
+    <textarea id="io"></textarea>
+    <div class="row">
+      <button id="loadBtn">载入这段 JSON</button>
+      <button id="clearBtn" class="danger">清空画布</button>
+    </div>
+    <div class="hint" id="ioMsg"></div>
+  </div>
+</div>
+<script>
+// ============================================================
+//  地图绘制器：画完导出 JSON，游戏里「开发者 → 自定义地图 → 导入地图」或直接发给我
+//  导出的格式和 florr 游戏里 registerCustomMap 读的格式完全一致
+// ============================================================
+const MOBS = [
+  ['normal','原初怪'], ['bee','蜜蜂'], ['bubble','泡泡'], ['bush','灌木丛'],
+  ['leafbug','叶虫'], ['goldleafbug','黄金叶虫'], ['ladybug','瓢虫'], ['goldladybug','黄金瓢虫'],
+  ['darkladybug','深色瓢虫'], ['leech','水蛭'], ['sponge','海绵'], ['virus','病毒'],
+  ['mechflower','机械花'], ['blackhole','黑洞']
+];
+const GROUNDS = [
+  ['plain','普通(白)'], ['garden','花园(草绿)'], ['desert','沙漠(沙黄)'],
+  ['ocean','海洋(蓝)'], ['jungle','丛林(深绿)'], ['bio','生化(肉色)']
+];
+const GROUND_COLORS = {
+  plain:'#ffffff', garden:'#8fd45f', desert:'#e8d49b', ocean:'#3a9ad9', jungle:'#4f9b3a', bio:'#c98d7a'
+};
+const RARITIES = ['普通','常见','罕见','稀有','史诗','传奇','神话','究极','超级','终极','终末','唯一'];
+// 障碍(墙)的样式：碰撞都是实心的，只是长得不一样
+const WALL_TYPES = [
+  ['wall','墙体','#7a7f88'], ['tree','树','#2f7a34'], ['rock','石头','#9aa0a8'],
+  ['fence','栅栏','#8a5a2b'], ['crystal','水晶','#7de3ff']
+];
+
+const S = {
+  id:'my_map', name:'我的地图', groundKind:'garden', size:48000, cell:480,
+  magicOnly:false, spawn:null, replaces:'', replaceName:'', cells:{}, areas:[], fixed:[], portals:[]
+};
+let tool = 'ground', curGround = 'garden';
+let curWall = 'wall';                           // 墙工具画哪种障碍
+// 每个工具各自记住笔刷大小：墙/障碍的画笔和地面是分开选的，互不影响
+const brushSizes = { ground:1, wall:1, erase:1, select:1, fill:1 };
+const TOOL_NAMES = { ground:'地面', wall:'墙/障碍', erase:'橡皮', select:'选区', fill:'填充' };
+function curBrush(){ return brushSizes[tool] || 1; }
+let fillMode = 'ground';                        // 填充工具填什么：ground / wall
+let selMode = 'rect';                           // 选区怎么划：rect=框选 / line=划线
+let selCells = new Set();                       // 选中的格子，key 是 "gx,gy"
+let selDrag = null;                             // 正在拖的选区
+let lassoPts = [];                              // 划线选区：随手画的轨迹
+let zoom = 0.02, panX = 0, panY = 0;          // 世界 → 屏幕： (wx - panX)*zoom + w/2
+let sel = null;                                // 选中的区域/固定怪/传送门
+let areaDraft = null;                          // 正在拖的刷怪区
+let dragStart = null, painting = false, panning = false, panStart = null;
+let mouseWorld = { x:0, y:0 };
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+
+// ---------- 坐标 ----------
+function w2s(x, y){ return { x:(x - panX) * zoom + cv.width / 2, y:(y - panY) * zoom + cv.height / 2 }; }
+function s2w(sx, sy){ return { x:(sx - cv.width / 2) / zoom + panX, y:(sy - cv.height / 2) / zoom + panY }; }
+function cellKey(gx, gy){ return gx + ',' + gy; }
+function cellAt(wx, wy){ return { gx:Math.floor(wx / S.cell), gy:Math.floor(wy / S.cell) }; }
+function inMapCell(gx, gy){
+  const half = S.size / 2;
+  return Math.abs((gx + 0.5) * S.cell) <= half && Math.abs((gy + 0.5) * S.cell) <= half;
+}
+function mobName(k){ const m = MOBS.filter(x => x[0] === k)[0]; return m ? m[1] : k; }
+function wallName(k){ const w = WALL_TYPES.filter(x => x[0] === k)[0]; return w ? w[1] : k; }
+// 编辑器里画障碍(墙)的样子，和游戏里的外观对应
+function drawWallCell(type, px, py, cs){
+  const col = (WALL_TYPES.filter(x => x[0] === type)[0] || [])[2] || '#7a7f88';
+  ctx.fillStyle = 'rgba(16,18,24,0.55)';
+  ctx.fillRect(px, py, cs + 1, cs + 1);
+  ctx.fillStyle = col;
+  if (type === 'tree'){ ctx.beginPath(); ctx.arc(px + cs / 2, py + cs / 2, cs * 0.36, 0, Math.PI * 2); ctx.fill(); }
+  else if (type === 'rock'){ ctx.beginPath(); ctx.arc(px + cs / 2, py + cs / 2, cs * 0.33, 0, Math.PI * 2); ctx.fill(); }
+  else if (type === 'fence'){
+    ctx.fillRect(px + cs * 0.1, py + cs * 0.36, cs * 0.8, Math.max(1, cs * 0.09));
+    ctx.fillRect(px + cs * 0.1, py + cs * 0.6, cs * 0.8, Math.max(1, cs * 0.09));
+  } else if (type === 'crystal'){
+    ctx.beginPath();
+    ctx.moveTo(px + cs / 2, py + cs * 0.16); ctx.lineTo(px + cs * 0.82, py + cs / 2);
+    ctx.lineTo(px + cs / 2, py + cs * 0.84); ctx.lineTo(px + cs * 0.18, py + cs / 2);
+    ctx.closePath(); ctx.fill();
+  } else {
+    ctx.fillRect(px + cs * 0.08, py + cs * 0.08, cs * 0.84, cs * 0.84);
+  }
+}
+
+// 油漆桶：从点到的格子开始，把连通的同类格子一次性涂掉(4 方向、不跨过不同类的格子)
+//   填地面：把和起点"当前地面"相同的连通区域改成当前选中的地面
+//   填墙  ：起点是空 → 把连通空区域变成墙；起点是墙 → 把连通墙区域清掉(和常见油漆桶一样可反悔)
+function floodFill(startGx, startGy){
+  if (!inMapCell(startGx, startGy)) return 0;
+  const seen = new Set();
+  const queue = [[startGx, startGy]];
+  seen.add(cellKey(startGx, startGy));
+  const isWall = (gx, gy) => !!(S.cells[cellKey(gx, gy)] || {}).w;
+  // 这一格是什么障碍样式：null=没有墙，'wall'=普通墙体，其它=树/石头/栅栏/水晶
+  const wallTypeOf = (gx, gy) => { const c = S.cells[cellKey(gx, gy)]; return (c && c.w) ? (c.w === 1 ? 'wall' : String(c.w)) : null; };
+  const groundOf = (gx, gy) => (S.cells[cellKey(gx, gy)] || {}).g || S.groundKind;
+  const t0 = (fillMode === 'wall') ? wallTypeOf(startGx, startGy) : null;
+  const wishType = (fillMode === 'wall') ? curWall : null;
+  const eraseWall = (fillMode === 'wall') && (t0 === wishType);      // 同一种样式再点一次 = 擦掉
+  const wantWall = (fillMode === 'wall') && !eraseWall;
+  const target = (fillMode === 'wall') ? t0 : groundOf(startGx, startGy);
+  if (fillMode === 'ground' && target === curGround && curGround !== S.groundKind) return 0;   // 已经就是这个颜色
+  let changed = 0, guard = 0;
+  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (let qi = 0; qi < queue.length && guard++ < 500000; qi++){
+    const gx = queue[qi][0], gy = queue[qi][1];
+    const k = cellKey(gx, gy);
+    const cur = S.cells[k] || {};
+    if (fillMode === 'wall'){
+      if (wantWall){ cur.w = (wishType === 'wall') ? 1 : wishType; S.cells[k] = cur; }
+      else { delete cur.w; if (!cur.g) delete S.cells[k]; else S.cells[k] = cur; }
+    } else {
+      if (curGround === S.groundKind) delete cur.g; else cur.g = curGround;
+      if (!cur.g && !cur.w) delete S.cells[k]; else S.cells[k] = cur;
+    }
+    changed++;
+    for (const d of DIRS){
+      const nx = gx + d[0], ny = gy + d[1];
+      if (!inMapCell(nx, ny)) continue;
+      const nk = cellKey(nx, ny);
+      if (seen.has(nk)) continue;
+      const same = (fillMode === 'wall') ? (wallTypeOf(nx, ny) === target) : (groundOf(nx, ny) === target);
+      if (!same) continue;
+      seen.add(nk); queue.push([nx, ny]);
+    }
+  }
+  return changed;
+}
+
+// 橡皮点到"摆件"上时优先删摆件：传送门 → 固定怪。没点到才去擦地形格子。
+// 判定用屏幕距离兜底(至少 10px)，缩得很小时也不会因为世界半径太小点不中。
+function eraseObjectAt(wx, wy){
+  const slack = Math.max(10 / zoom, 1);
+  for (let i = S.portals.length - 1; i >= 0; i--){
+    const pt = S.portals[i];
+    if (Math.hypot(pt.x - wx, pt.y - wy) <= Math.max(pt.r || 46, slack)){
+      S.portals.splice(i, 1);
+      if (sel && sel.o === pt) sel = null;
+      return '传送门';
+    }
+  }
+  for (let i = S.fixed.length - 1; i >= 0; i--){
+    const f = S.fixed[i];
+    if (Math.hypot(f.x - wx, f.y - wy) <= Math.max(20, slack)){
+      S.fixed.splice(i, 1);
+      if (sel && sel.o === f) sel = null;
+      return '固定怪';
+    }
+  }
+  return null;
+}
+// 橡皮：先删摆件，没删到就擦格子
+function paintOrErase(wx, wy){
+  if (tool === 'erase'){
+    const what = eraseObjectAt(wx, wy);
+    if (what){
+      refreshLists(); save(); draw();
+      $('status').textContent = '橡皮擦掉了 1 个' + what;
+      return;
+    }
+  }
+  paintAt(wx, wy);
+}
+
+// ============================================================
+//  选区：框选 / 划线选出一片格子，然后整片设置或删除
+// ============================================================
+function selKey(gx, gy){ return gx + ',' + gy; }
+function selClear(){ selCells.clear(); return selCells.size; }
+// 框选：把矩形范围内的格子都选上(替换原来的选区)
+function selSelectRect(gx0, gy0, gx1, gy1){
+  selCells.clear();
+  const x0 = Math.min(gx0, gx1), x1 = Math.max(gx0, gx1);
+  const y0 = Math.min(gy0, gy1), y1 = Math.max(gy0, gy1);
+  for (let gx = x0; gx <= x1; gx++) for (let gy = y0; gy <= y1; gy++) if (inMapCell(gx, gy)) selCells.add(selKey(gx, gy));
+  return selCells.size;
+}
+// 划线：像画笔一样把经过的格子加进选区(笔刷大小生效)
+function selAddLine(gx, gy, size){
+  const r = Math.floor((size || 1) / 2);
+  for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) if (inMapCell(gx + dx, gy + dy)) selCells.add(selKey(gx + dx, gy + dy));
+  return selCells.size;
+}
+// 划线时鼠标移动很快也要连起来，中间缺格会很难看
+function selAddStroke(gx0, gy0, gx1, gy1, size){
+  const steps = Math.max(Math.abs(gx1 - gx0), Math.abs(gy1 - gy0), 1);
+  for (let i = 0; i <= steps; i++){
+    const t = i / steps;
+    selAddLine(Math.round(gx0 + (gx1 - gx0) * t), Math.round(gy0 + (gy1 - gy0) * t), size);
+  }
+  return selCells.size;
+}
+// 点是否在多边形内部(射线法)。划线选区的"内部"就是靠这个判定的
+function pointInPoly(x, y, pts){
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++){
+    const xi = pts[i].x, yi = pts[i].y, xj = pts[j].x, yj = pts[j].y;
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+// 划线选区：随手画的封闭图形 → 图形内部整片选中(顺带把画的线本身也选上，细长图形也不会空)
+function selFillLasso(pts, size){
+  selCells.clear();
+  if (!pts || pts.length < 1) return 0;
+  for (const p of pts) selAddLine(Math.floor(p.x / S.cell), Math.floor(p.y / S.cell), size || 1);
+  if (pts.length < 3) return selCells.size;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of pts){
+    if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+  }
+  const gx0 = Math.floor(minX / S.cell), gx1 = Math.floor(maxX / S.cell);
+  const gy0 = Math.floor(minY / S.cell), gy1 = Math.floor(maxY / S.cell);
+  for (let gx = gx0; gx <= gx1; gx++) for (let gy = gy0; gy <= gy1; gy++){
+    if (!inMapCell(gx, gy)) continue;
+    if (pointInPoly((gx + 0.5) * S.cell, (gy + 0.5) * S.cell, pts)) selCells.add(selKey(gx, gy));
+  }
+  return selCells.size;
+}
+function selBounds(){
+  if (!selCells.size) return null;
+  let gx0 = Infinity, gy0 = Infinity, gx1 = -Infinity, gy1 = -Infinity;
+  for (const k of selCells){
+    const p = k.split(','), gx = +p[0], gy = +p[1];
+    if (gx < gx0) gx0 = gx; if (gx > gx1) gx1 = gx;
+    if (gy < gy0) gy0 = gy; if (gy > gy1) gy1 = gy;
+  }
+  return { gx0:gx0, gy0:gy0, gx1:gx1, gy1:gy1,
+           x:gx0 * S.cell, y:gy0 * S.cell, w:(gx1 - gx0 + 1) * S.cell, h:(gy1 - gy0 + 1) * S.cell };
+}
+function selDeleteGround(){ let n = 0; for (const k of selCells){ const c = S.cells[k]; if (c && c.g){ delete c.g; if (!c.w) delete S.cells[k]; n++; } } return n; }
+function selDeleteWalls(){ let n = 0; for (const k of selCells){ const c = S.cells[k]; if (c && c.w){ delete c.w; if (!c.g) delete S.cells[k]; n++; } } return n; }
+function selDeletePortals(){ const before = S.portals.length; S.portals = S.portals.filter(pt => !selCells.has(selKey(Math.floor(pt.x / S.cell), Math.floor(pt.y / S.cell)))); return before - S.portals.length; }
+function selDeleteFixed(){ const before = S.fixed.length; S.fixed = S.fixed.filter(f => !selCells.has(selKey(Math.floor(f.x / S.cell), Math.floor(f.y / S.cell)))); return before - S.fixed.length; }
+function selDeleteAreas(){ const before = S.areas.length; S.areas = S.areas.filter(a => !selCells.has(selKey(Math.floor((a.x + a.w / 2) / S.cell), Math.floor((a.y + a.h / 2) / S.cell)))); return before - S.areas.length; }
+function selDeleteAll(){
+  return { wall:selDeleteWalls(), ground:selDeleteGround(), portal:selDeletePortals(), fixed:selDeleteFixed(), area:selDeleteAreas() };
+}
+// 把选区做成刷怪区(区域等级/可生成的怪/上限)；已经有同样范围的刷怪区就直接改它
+function selUpsertArea(rarity, kinds, cap){
+  const b = selBounds();
+  if (!b) return null;
+  const same = a => Math.round(a.x) === b.x && Math.round(a.y) === b.y && Math.round(a.w) === b.w && Math.round(a.h) === b.h;
+  let area = S.areas.filter(same)[0];
+  if (!area){ area = { x:b.x, y:b.y, w:b.w, h:b.h, kinds:[], cap:18, rarity:null }; S.areas.push(area); }
+  if (kinds && kinds.length) area.kinds = kinds.slice();
+  area.cap = Math.max(1, cap || area.cap || 18);
+  if (rarity !== '' && rarity !== undefined && rarity !== null) area.rarity = +rarity;
+  return area;
+}
+
+// ---------- 初始化界面 ----------
+function fillSelect(el, list, render){
+  el.innerHTML = '';
+  for (const it of list){
+    const o = document.createElement('option');
+    o.value = it[0];
+    o.textContent = render ? render(it) : it[1];
+    el.appendChild(o);
+  }
+}
+fillSelect($('fGround'), GROUNDS);
+fillSelect($('aRarity'), RARITIES.map((n, i) => [String(i), n]));
+$('aRarity').insertAdjacentHTML('afterbegin', '<option value="">自动</option>');
+fillSelect($('xKind'), MOBS);
+fillSelect($('xRarity'), RARITIES.map((n, i) => [String(i), n]));
+// 选区操作里的"区域等级"和刷怪区设置里的品质是同一个东西，两个框互相同步
+fillSelect($('selRarity'), RARITIES.map((n, i) => [String(i), n]));
+$('selRarity').insertAdjacentHTML('afterbegin', '<option value="">自动</option>');
+$('selRarity').addEventListener('change', () => { $('aRarity').value = $('selRarity').value; updateSelPreview(); });
+$('aRarity').addEventListener('change', () => { $('selRarity').value = $('aRarity').value; });
+function refreshPortalTargets(){
+  const list = GROUNDS.map(g => [g[0], g[1]]).concat([['world','大世界'], ['training','训练场']]);
+  for (const extra of (extraMapIds || [])) list.push([extra.id, extra.name]);
+  list.push([S.id, S.name + '(自己)']);
+  fillSelect($('pTo'), list);
+}
+let extraMapIds = [['gardenM','花园·魔法'], ['desertM','沙漠·魔法'], ['oceanM','海洋·魔法'], ['jungleM','丛林·魔法'], ['bioM','生化·魔法']];
+refreshPortalTargets();
+
+const gp = $('groundPick');
+for (const g of GROUNDS){
+  const b = document.createElement('button');
+  b.innerHTML = '<span class="swatch" style="background:' + GROUND_COLORS[g[0]] + '"></span> ' + g[1].split('(')[0];
+  b.dataset.g = g[0];
+  b.className = 'groundPickBtn' + (g[0] === curGround ? ' on' : '');
+  b.addEventListener('click', () => {
+    curGround = g[0];
+    [...gp.children].forEach(c => c.classList.toggle('on', c.dataset.g === curGround));
+  });
+  gp.appendChild(b);
+}
+{
+  const box = $('aKinds');
+  for (const m of MOBS){
+    const l = document.createElement('label');
+    l.innerHTML = '<input type="checkbox" style="width:auto" value="' + m[0] + '"> ' + m[1];
+    l.querySelector('input').addEventListener('change', () => { if (sel && sel.kind === 'area') sel.o.kinds = readKinds(); refreshLists(); });
+    box.appendChild(l);
+  }
+}
+{
+  const wp = $('wallPick');
+  for (const w of WALL_TYPES){
+    const b = document.createElement('button');
+    b.innerHTML = '<span class="swatch" style="background:' + w[2] + '"></span> ' + w[1];
+    b.dataset.w = w[0];
+    b.className = 'wallPickBtn' + (w[0] === curWall ? ' on' : '');
+    b.addEventListener('click', () => {
+      curWall = w[0];
+      [...wp.children].forEach(c => c.classList.toggle('on', c.dataset.w === curWall));
+      if (tool === 'wall' || tool === 'fill') $('status').textContent = toolLabel();
+    });
+    wp.appendChild(b);
+  }
+}
+function readKinds(){ return [...$('aKinds').querySelectorAll('input')].filter(i => i.checked).map(i => i.value); }
+function writeKinds(list){
+  const set = list || [];
+  [...$('aKinds').querySelectorAll('input')].forEach(i => { i.checked = set.indexOf(i.value) >= 0; });
+}
+
+// ---------- 工具 / 笔刷按钮 ----------
+document.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () => {
+  tool = b.dataset.tool;
+  document.querySelectorAll('.tool').forEach(x => x.classList.toggle('on', x === b));
+  cv.style.cursor = tool === 'pan' ? 'grab' : 'crosshair';
+  syncBrushUI();
+  refreshLists();
+}));
+document.querySelectorAll('.brush').forEach(b => b.addEventListener('click', () => {
+  brushSizes[tool] = +b.dataset.brush;
+  syncBrushUI();
+}));
+// 笔刷大小那一行显示的是"当前工具的"大小；每个工具各记各的
+function syncBrushUI(){
+  const size = curBrush();
+  document.querySelectorAll('.brush').forEach(x => x.classList.toggle('on', +x.dataset.brush === size));
+  const lb = $('brushLabel');
+  if (lb) lb.textContent = '笔刷大小(格) · 当前工具：' + (TOOL_NAMES[tool] || tool) + (tool === 'fill' ? '（油漆桶一次一片，不用笔刷）' : '');
+}
+document.querySelectorAll('.fillm').forEach(b => b.addEventListener('click', () => {
+  fillMode = b.dataset.fm;
+  document.querySelectorAll('.fillm').forEach(x => x.classList.toggle('on', x === b));
+  if (tool === 'fill') $('status').textContent = toolLabel();
+}));
+document.querySelectorAll('.selm').forEach(b => b.addEventListener('click', () => {
+  selMode = b.dataset.sm;
+  document.querySelectorAll('.selm').forEach(x => x.classList.toggle('on', x === b));
+  if (tool === 'select') $('status').textContent = toolLabel();
+}));
+
+// ---------- 画布 ----------
+function resize(){
+  const r = cv.getBoundingClientRect();
+  cv.width = Math.max(200, Math.floor(r.width));
+  cv.height = Math.max(200, Math.floor(r.height));
+  draw();
+}
+window.addEventListener('resize', resize);
+function fitView(){
+  const pad = 30;
+  zoom = Math.min((cv.width - pad * 2) / S.size, (cv.height - pad * 2) / S.size);
+  panX = 0; panY = 0;
+  draw();
+}
+$('fitBtn').addEventListener('click', fitView);
+$('spawnCenterBtn').addEventListener('click', () => {
+  S.spawn = { x:0, y:0 };
+  save(); draw();
+});
+
+function draw(){
+  ctx.fillStyle = '#111319';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  const half = S.size / 2;
+  const tl = s2w(0, 0), br = s2w(cv.width, cv.height);
+  const gx0 = Math.max(Math.floor(-half / S.cell), Math.floor(tl.x / S.cell));
+  const gx1 = Math.min(Math.ceil(half / S.cell) - 1, Math.ceil(br.x / S.cell));
+  const gy0 = Math.max(Math.floor(-half / S.cell), Math.floor(tl.y / S.cell));
+  const gy1 = Math.min(Math.ceil(half / S.cell) - 1, Math.ceil(br.y / S.cell));
+  const cs = S.cell * zoom;
+  // 地面
+  for (let gx = gx0; gx <= gx1; gx++) for (let gy = gy0; gy <= gy1; gy++){
+    const c = S.cells[cellKey(gx, gy)];
+    const g = (c && c.g) || S.groundKind;
+    const p = w2s(gx * S.cell, gy * S.cell);
+    ctx.fillStyle = GROUND_COLORS[g] || '#888';
+    ctx.fillRect(p.x, p.y, cs + 1, cs + 1);
+    if (c && c.w) drawWallCell(typeof c.w === 'string' ? c.w : 'wall', p.x, p.y, cs);
+  }
+  // 网格
+  if (cs >= 6){
+    ctx.strokeStyle = 'rgba(0,0,0,0.16)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let gx = gx0; gx <= gx1 + 1; gx++){ const p = w2s(gx * S.cell, 0); ctx.moveTo(p.x, 0); ctx.lineTo(p.x, cv.height); }
+    for (let gy = gy0; gy <= gy1 + 1; gy++){ const p = w2s(0, gy * S.cell); ctx.moveTo(0, p.y); ctx.lineTo(cv.width, p.y); }
+    ctx.stroke();
+  }
+  // 地图边界
+  const a = w2s(-half, -half), b = w2s(half, half);
+  ctx.strokeStyle = '#ff5a5a'; ctx.lineWidth = 2;
+  ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+  // 刷怪区
+  S.areas.forEach((ar, i) => {
+    const p0 = w2s(ar.x, ar.y), p1 = w2s(ar.x + ar.w, ar.y + ar.h);
+    const on = sel && sel.kind === 'area' && sel.o === ar;
+    ctx.fillStyle = on ? 'rgba(90,200,255,0.22)' : 'rgba(90,200,255,0.12)';
+    ctx.fillRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
+    ctx.strokeStyle = on ? '#7fdcff' : 'rgba(120,210,255,0.6)'; ctx.lineWidth = on ? 3 : 1.5;
+    ctx.strokeRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
+    ctx.fillStyle = '#cfefff'; ctx.font = '12px "Segoe UI"';
+    ctx.fillText('刷怪区#' + (i + 1) + ' ' + (ar.kinds || []).map(mobName).join('/') + ' ≤' + ar.cap, p0.x + 4, p0.y + 14);
+  });
+  if (areaDraft){
+    const p0 = w2s(areaDraft.x, areaDraft.y), p1 = w2s(areaDraft.x + areaDraft.w, areaDraft.y + areaDraft.h);
+    ctx.fillStyle = 'rgba(90,200,255,0.25)'; ctx.fillRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
+    ctx.strokeStyle = '#bfeaff'; ctx.lineWidth = 2; ctx.strokeRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
+  }
+  // 固定怪
+  S.fixed.forEach((f, i) => {
+    const p = w2s(f.x, f.y);
+    ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffd447'; ctx.fill(); ctx.strokeStyle = '#6b4b00'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = '#ffe9a8'; ctx.font = '11px "Segoe UI"';
+    ctx.fillText(mobName(f.kind) + ' r' + f.rarity + (f.variant ? ' 变种' : ''), p.x + 9, p.y + 4);
+  });
+  // 传送门
+  S.portals.forEach((pt, i) => {
+    const p = w2s(pt.x, pt.y), r = Math.max(8, 46 * zoom);
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(150,90,255,0.3)'; ctx.fill();
+    ctx.strokeStyle = '#c8a0ff'; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.fillStyle = '#e6d6ff'; ctx.font = '11px "Segoe UI"';
+    ctx.fillText('→ ' + (pt.to || '?'), p.x + r + 4, p.y + 4);
+  });
+  // 出生点
+  if (S.spawn){
+    const p = w2s(S.spawn.x, S.spawn.y);
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++){
+      const ang = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? 5 : 11;
+      ctx[i ? 'lineTo' : 'moveTo'](p.x + Math.cos(ang) * rr, p.y + Math.sin(ang) * rr);
+    }
+    ctx.closePath(); ctx.fillStyle = '#7dffa0'; ctx.fill(); ctx.strokeStyle = '#0b6b2a'; ctx.stroke();
+    ctx.fillStyle = '#b6ffcb'; ctx.font = '11px "Segoe UI"'; ctx.fillText('出生点', p.x + 13, p.y + 4);
+  }
+  // 选区(高亮所有选中的格子 + 外框)
+  if (lassoPts.length > 1){
+    ctx.save();
+    ctx.beginPath();
+    const lp0 = w2s(lassoPts[0].x, lassoPts[0].y);
+    ctx.moveTo(lp0.x, lp0.y);
+    for (let i = 1; i < lassoPts.length; i++){ const lp = w2s(lassoPts[i].x, lassoPts[i].y); ctx.lineTo(lp.x, lp.y); }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,214,64,0.18)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,236,120,0.95)'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore();
+  }
+  if (selCells.size){
+    ctx.fillStyle = 'rgba(255,214,64,0.30)';
+    for (const k of selCells){
+      const p2 = k.split(','), gx = +p2[0], gy = +p2[1];
+      const p = w2s(gx * S.cell, gy * S.cell);
+      if (p.x > cv.width || p.y > cv.height || p.x + cs < 0 || p.y + cs < 0) continue;
+      ctx.fillRect(p.x, p.y, cs + 1, cs + 1);
+    }
+    const b = selBounds();
+    if (b){
+      const p0 = w2s(b.x, b.y), p1 = w2s(b.x + b.w, b.y + b.h);
+      ctx.strokeStyle = 'rgba(255,236,120,0.95)'; ctx.lineWidth = 2;
+      ctx.strokeRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
+    }
+  }
+  $('legend').innerHTML = '格子 ' + S.cell + 'px · 缩放 ' + (zoom * 100).toFixed(1) + '%<br>' +
+    '鼠标世界坐标 ' + Math.round(mouseWorld.x) + ', ' + Math.round(mouseWorld.y);
+  const warn = $('spawnWarn');
+  if (warn){
+    if (S.spawn){ warn.style.color = '#9fe6b0'; warn.textContent = '出生点：' + Math.round(S.spawn.x) + ', ' + Math.round(S.spawn.y); }
+    else { warn.style.color = '#ff9b9b'; warn.textContent = '⚠ 还没摆出生点：现在会用地图正中心 (0,0)'; }
+  }
+}
+
+// ---------- 鼠标 ----------
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const before = s2w(e.offsetX, e.offsetY);
+  zoom *= e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  zoom = Math.max(0.002, Math.min(4, zoom));
+  const after = s2w(e.offsetX, e.offsetY);
+  panX += before.x - after.x; panY += before.y - after.y;
+  draw();
+}, { passive:false });
+
+cv.addEventListener('mousemove', e => {
+  mouseWorld = s2w(e.offsetX, e.offsetY);
+  if (panning){
+    panX -= (e.offsetX - panStart.x) / zoom; panY -= (e.offsetY - panStart.y) / zoom;
+    panStart = { x:e.offsetX, y:e.offsetY };
+    draw(); return;
+  }
+  if (areaDraft && dragStart){
+    const gx = Math.floor(mouseWorld.x / S.cell), gy = Math.floor(mouseWorld.y / S.cell);
+    const x0 = Math.min(dragStart.gx, gx), x1 = Math.max(dragStart.gx, gx);
+    const y0 = Math.min(dragStart.gy, gy), y1 = Math.max(dragStart.gy, gy);
+    areaDraft = { x:x0 * S.cell, y:y0 * S.cell, w:(x1 - x0 + 1) * S.cell, h:(y1 - y0 + 1) * S.cell,
+                  kinds:readKinds(), cap:Math.max(1, +$('aCap').value || 18),
+                  rarity:$('aRarity').value === '' ? null : +$('aRarity').value };
+    draw(); return;
+  }
+  if (selDrag){
+    const gx = Math.floor(mouseWorld.x / S.cell), gy = Math.floor(mouseWorld.y / S.cell);
+    if (selMode === 'rect') selSelectRect(selDrag.gx, selDrag.gy, gx, gy);
+    else {
+      const last = lassoPts[lassoPts.length - 1];
+      if (!last || Math.hypot(mouseWorld.x - last.x, mouseWorld.y - last.y) > S.cell * 0.15) lassoPts.push({ x:mouseWorld.x, y:mouseWorld.y });
+      $('status').textContent = '划线选区：画完一个封闭图形松手，图形内部整片选中';
+    }
+    updateSelUI(); draw(); return;
+  }
+  if (painting && (tool === 'ground' || tool === 'wall' || tool === 'erase')){ paintOrErase(mouseWorld.x, mouseWorld.y); }
+  $('status').textContent = toolLabel();
+  draw();
+});
+
+cv.addEventListener('mousedown', e => {
+  if (e.button === 2 || e.button === 1 || tool === 'pan'){
+    panning = true; panStart = { x:e.offsetX, y:e.offsetY }; cv.style.cursor = 'grabbing'; return;
+  }
+  const wp = s2w(e.offsetX, e.offsetY);
+  if (tool === 'select'){
+    const c = cellAt(wp.x, wp.y);
+    selDrag = { gx:c.gx, gy:c.gy, last:{ gx:c.gx, gy:c.gy } };
+    if (selMode === 'rect') selSelectRect(c.gx, c.gy, c.gx, c.gy);
+    else { lassoPts = [{ x:wp.x, y:wp.y }]; selCells.clear(); }
+    updateSelUI(); draw();
+  }
+  else if (tool === 'fill'){
+    const c = cellAt(wp.x, wp.y);
+    const n = floodFill(c.gx, c.gy);
+    save(); draw();
+    $('status').textContent = '填充了 ' + n + ' 格（' + (fillMode === 'wall' ? '墙' : curGround) + '）';
+  }
+  else if (tool === 'ground' || tool === 'wall' || tool === 'erase'){ painting = true; paintOrErase(wp.x, wp.y); }
+  else if (tool === 'area'){
+    const c = cellAt(wp.x, wp.y);
+    dragStart = c;
+    areaDraft = { x:c.gx * S.cell, y:c.gy * S.cell, w:S.cell, h:S.cell, kinds:readKinds(),
+                  cap:Math.max(1, +$('aCap').value || 18), rarity:$('aRarity').value === '' ? null : +$('aRarity').value };
+  }
+  else if (tool === 'spawn'){ S.spawn = { x:Math.round(wp.x), y:Math.round(wp.y) }; save(); draw(); }
+  else if (tool === 'fixed'){
+    const o = { x:Math.round(wp.x), y:Math.round(wp.y), kind:$('xKind').value,
+                rarity:+$('xRarity').value || 0, variant:$('xVariant').checked };
+    S.fixed.push(o); sel = { kind:'fixed', o }; refreshLists(); save(); draw();
+  }
+  else if (tool === 'portal'){
+    const tx = $('pTx').value === '' ? undefined : +$('pTx').value;
+    const ty = $('pTy').value === '' ? undefined : +$('pTy').value;
+    const o = { x:Math.round(wp.x), y:Math.round(wp.y), to:$('pTo').value };
+    if (tx !== undefined) o.tx = tx;
+    if (ty !== undefined) o.ty = ty;
+    S.portals.push(o); sel = { kind:'portal', o }; refreshLists(); save(); draw();
+  }
+});
+window.addEventListener('mouseup', () => {
+  if (areaDraft && dragStart){
+    if (areaDraft.kinds.length === 0) areaDraft.kinds = [MOBS[0][0]];
+    S.areas.push(areaDraft); sel = { kind:'area', o:areaDraft };
+    areaDraft = null; dragStart = null; refreshLists(); save();
+  }
+  if (lassoPts.length){ selFillLasso(lassoPts, curBrush()); lassoPts = []; updateSelUI(); }
+  painting = false; panning = false; selDrag = null;
+  if (tool !== 'pan') cv.style.cursor = 'crosshair';
+  draw();
+});
+window.addEventListener('keydown', e => {
+  if (e.key === 'Delete' && sel){
+    if (sel.kind === 'area') S.areas.splice(S.areas.indexOf(sel.o), 1);
+    if (sel.kind === 'fixed') S.fixed.splice(S.fixed.indexOf(sel.o), 1);
+    if (sel.kind === 'portal') S.portals.splice(S.portals.indexOf(sel.o), 1);
+    sel = null; refreshLists(); save(); draw();
+  }
+});
+function toolLabel(){
+  const bs = curBrush();
+  return { ground:'画地面：按住左键涂 ' + bs + '×' + bs + ' 格(' + curGround + ')',
+           wall:'画障碍：按住左键涂 ' + bs + '×' + bs + ' 格（当前样式：' + wallName(curWall) + '，墙的笔刷和地面分开记）',
+           fill:'油漆桶：点一下，把连通的同类格子一次涂成 ' + (fillMode === 'wall' ? ('障碍·' + wallName(curWall)) : curGround) + '（用左边「填充工具填什么」切换）',
+           erase:'橡皮：擦掉画过的格子；点在传送门/固定怪上则直接删掉那个摆件',
+           select:'选区：' + (selMode === 'rect' ? '框选（拖一个矩形，框里的格子全选中）' : '划线（随手画一个封闭图形，图形内部整片选中）') + '，然后去右边「选区操作」',
+           spawn:'点一下设置出生点', area:'拖一个框做刷怪区',
+           fixed:'点一下摆一只固定怪（右边选种类/品质）',
+           portal:'点一下摆一个传送门（右边选目标地图）',
+           pan:'拖动视图' }[tool] || '';
+}
+function paintAt(wx, wy){
+  const c = cellAt(wx, wy);
+  const r = Math.floor(curBrush() / 2);
+  for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++){
+    const gx = c.gx + dx, gy = c.gy + dy;
+    if (!inMapCell(gx, gy)) continue;
+    const k = cellKey(gx, gy);
+    const cur = S.cells[k] || {};
+    if (tool === 'ground'){ if (curGround === S.groundKind) delete cur.g; else cur.g = curGround; }
+    else if (tool === 'wall') cur.w = (curWall === 'wall') ? 1 : curWall;
+    else { delete cur.g; delete cur.w; }
+    if (!cur.g && !cur.w) delete S.cells[k]; else S.cells[k] = cur;
+  }
+  save(); draw();
+}
+
+// ---------- 右侧列表 ----------
+function el(html){ const d = document.createElement('div'); d.innerHTML = html; return d; }
+function refreshLists(){
+  const al = $('areaList'); al.innerHTML = '';
+  S.areas.forEach((ar, i) => {
+    const d = el('<div class="item"><b>区域#' + (i + 1) + ' · 等级 ' + (ar.rarity == null ? '自动' : RARITIES[ar.rarity]) + '</b> ' + Math.round(ar.x) + ',' + Math.round(ar.y) +
+      ' · ' + Math.round(ar.w) + '×' + Math.round(ar.h) + '<br>怪：' + ((ar.kinds || []).map(mobName).join('/') || '未选') +
+      '<br>上限 ' + ar.cap +
+      '<div class="mini"><button data-act="edit">编辑</button><button data-act="del">删除</button></div></div>');
+    d.querySelector('[data-act=edit]').addEventListener('click', () => {
+      sel = { kind:'area', o:ar }; writeKinds(ar.kinds); $('aCap').value = ar.cap;
+      $('aRarity').value = ar.rarity == null ? '' : String(ar.rarity);
+      $('selRarity').value = $('aRarity').value; draw();
+    });
+    d.querySelector('[data-act=del]').addEventListener('click', () => {
+      S.areas.splice(i, 1); if (sel && sel.o === ar) sel = null; refreshLists(); save(); draw();
+    });
+    al.appendChild(d);
+  });
+  const fl = $('fixedList'); fl.innerHTML = '';
+  S.fixed.forEach((f, i) => {
+    const d = el('<div class="item"><b>固定怪</b> ' + mobName(f.kind) + ' · ' + RARITIES[f.rarity] +
+      (f.variant ? ' · 变种' : '') + ' @' + Math.round(f.x) + ',' + Math.round(f.y) +
+      '<div class="mini"><button data-act="del">删除</button></div></div>');
+    d.querySelector('[data-act=del]').addEventListener('click', () => { S.fixed.splice(i, 1); refreshLists(); save(); draw(); });
+    fl.appendChild(d);
+  });
+  const pl = $('portalList'); pl.innerHTML = '';
+  S.portals.forEach((pt, i) => {
+    const d = el('<div class="item"><b>传送门</b> → ' + pt.to + ' @' + Math.round(pt.x) + ',' + Math.round(pt.y) +
+      (pt.tx !== undefined ? (' 落点 ' + pt.tx + ',' + pt.ty) : '') +
+      '<div class="mini"><button data-act="del">删除</button></div></div>');
+    d.querySelector('[data-act=del]').addEventListener('click', () => { S.portals.splice(i, 1); refreshLists(); save(); draw(); });
+    pl.appendChild(d);
+  });
+}
+$('aKinds').addEventListener('change', () => { if (sel && sel.kind === 'area'){ sel.o.kinds = readKinds(); refreshLists(); draw(); } });
+$('aCap').addEventListener('input', () => { if (sel && sel.kind === 'area'){ sel.o.cap = Math.max(1, +$('aCap').value || 18); refreshLists(); draw(); } });
+$('aRarity').addEventListener('change', () => { if (sel && sel.kind === 'area'){ sel.o.rarity = $('aRarity').value === '' ? null : +$('aRarity').value; refreshLists(); draw(); } });
+
+// ---------- 选区按钮 ----------
+function updateSelUI(){
+  const info = $('selInfo');
+  if (!info) return;
+  if (!selCells.size){ info.textContent = '(未选择)'; info.style.color = '#7f8798'; updateSelPreview(); return; }
+  const b = selBounds();
+  info.textContent = '(已选 ' + selCells.size + ' 格 · ' + (b.gx1 - b.gx0 + 1) + '×' + (b.gy1 - b.gy0 + 1) + ')';
+  info.style.color = '#ffd447';
+  if (tool === 'select') $('status').textContent = toolLabel() + ' ｜ ' + info.textContent;
+  updateSelPreview();
+}
+// 点「确认」之前先告诉你会发生什么：新建还是更新哪个区域、等级/怪/上限是什么
+function updateSelPreview(){
+  const box = $('selPreview');
+  if (!box) return;
+  if (!selCells.size){ box.textContent = '还没有选区：用「选区」工具框选或划线选出区域'; return; }
+  const b = selBounds();
+  const same = a => Math.round(a.x) === b.x && Math.round(a.y) === b.y && Math.round(a.w) === b.w && Math.round(a.h) === b.h;
+  const exist = S.areas.filter(same)[0];
+  const lv = $('selRarity').value;
+  const kinds = readKinds();
+  box.textContent = '将' + (exist ? ('更新区域 #' + (S.areas.indexOf(exist) + 1)) : '新建区域') +
+    '：' + (b.gx1 - b.gx0 + 1) + '×' + (b.gy1 - b.gy0 + 1) + ' 格 · 等级 ' + (lv === '' ? '自动' : RARITIES[+lv]) +
+    ' · ' + (kinds.length ? ('出 ' + kinds.map(mobName).join('/')) : '还没勾怪') + ' · 上限 ' + ($('aCap').value || 18);
+  // 重叠提示：重叠的地方按等级高的生效，低等级盖不掉高等级
+  const newLv = lv === '' ? -1 : +lv;
+  const hits = [];
+  S.areas.forEach((a, i) => {
+    if (a === exist) return;
+    const overlap = b.x < a.x + a.w && a.x < b.x + b.w && b.y < a.y + a.h && a.y < b.y + b.h;
+    if (overlap && (a.rarity == null ? -1 : a.rarity) >= newLv) hits.push('#' + (i + 1) + '(' + (a.rarity == null ? '自动' : RARITIES[a.rarity]) + ')');
+  });
+  if (hits.length) box.textContent += ' ｜ 重叠提示：和区域 ' + hits.join('、') + ' 重叠，重叠处按等级高的那个生效';
+}
+function selGuard(){
+  if (selCells.size) return true;
+  $('status').textContent = '先选「选区」工具，在画布上框选或划线选出区域';
+  return false;
+}
+function clearSel(){ selClear(); lassoPts = []; updateSelUI(); draw(); }
+$('selClearBtn').addEventListener('click', clearSel);
+$('selClearBtn2').addEventListener('click', clearSel);
+$('selApplyBtn').addEventListener('click', () => {
+  if (!selGuard()) return;
+  const a = selUpsertArea($('selRarity').value, readKinds(), +$('aCap').value || 18);
+  sel = { kind:'area', o:a };
+  refreshLists(); save(); draw();
+  updateSelPreview();
+  $('status').textContent = '✔ 选区已设为区域 #' + (S.areas.indexOf(a) + 1) + '：等级 ' + (a.rarity == null ? '自动' : RARITIES[a.rarity]) +
+    ' · ' + (a.kinds.length ? ('出 ' + a.kinds.map(mobName).join('/')) : '还没勾怪') + ' · 上限 ' + a.cap;
+});
+$('selDelAllBtn').addEventListener('click', () => {
+  if (!selGuard()) return;
+  const n = selDeleteAll();
+  if (sel && sel.kind === 'area' && S.areas.indexOf(sel.o) < 0) sel = null;
+  refreshLists(); save(); draw();
+  $('status').textContent = '删除区域内：墙 ' + n.wall + ' · 地面 ' + n.ground + ' · 传送门 ' + n.portal + ' · 固定怪 ' + n.fixed + ' · 刷怪区 ' + n.area;
+});
+$('selDelWallBtn').addEventListener('click', () => {
+  if (!selGuard()) return;
+  const n = selDeleteWalls();
+  save(); draw(); $('status').textContent = '删除了区域内 ' + n + ' 格墙体';
+});
+$('selDelGroundBtn').addEventListener('click', () => {
+  if (!selGuard()) return;
+  const n = selDeleteGround();
+  save(); draw(); $('status').textContent = '删除了区域内 ' + n + ' 格地面覆盖(恢复默认地面)';
+});
+$('selDelPortalBtn').addEventListener('click', () => {
+  if (!selGuard()) return;
+  const n = selDeletePortals();
+  refreshLists(); save(); draw(); $('status').textContent = '删除了区域内 ' + n + ' 个传送门';
+});
+$('selDelFixedBtn').addEventListener('click', () => {
+  if (!selGuard()) return;
+  const n = selDeleteFixed();
+  refreshLists(); save(); draw(); $('status').textContent = '删除了区域内 ' + n + ' 只固定怪';
+});
+
+// ---------- 属性绑定 ----------
+function bindProp(id, fn){
+  const e = $(id);
+  e.addEventListener('input', fn);
+  e.addEventListener('change', fn);
+}
+bindProp('fId', () => { S.id = $('fId').value.trim() || 'my_map'; refreshPortalTargets(); save(); });
+bindProp('fName', () => { S.name = $('fName').value; refreshPortalTargets(); save(); });
+bindProp('fGround', () => { S.groundKind = $('fGround').value; save(); draw(); });
+bindProp('fSize', () => { S.size = Math.max(4000, +$('fSize').value || 48000); save(); draw(); });
+bindProp('fCell', () => { S.cell = +$('fCell').value; save(); draw(); });
+bindProp('fMagic', () => { S.magicOnly = $('fMagic').checked; save(); });
+bindProp('fReplace', () => { S.replaces = $('fReplace').value; updateReplaceWarn(); save(); });
+bindProp('fReplaceName', () => { S.replaceName = $('fReplaceName').value; updateReplaceWarn(); save(); });
+// 代替原地图的提示：说清楚会顶掉哪张、怎么恢复
+function updateReplaceWarn(){
+  const box = $('replaceWarn');
+  if (!box) return;
+  if (!S.replaces){
+    box.style.color = '#7f8798';
+    box.textContent = '不代替：这张图会作为一张新地图加在主菜单里。';
+    return;
+  }
+  const names = { world:'大世界', garden:'花园', desert:'沙漠', ocean:'海洋', jungle:'丛林', bio:'生化' };
+  box.style.color = '#ffd447';
+  box.textContent = '⚠ 这张图会顶替「' + (names[S.replaces] || S.replaces) + '」：原来那张图、以及它的魔法版，' +
+    '内容都会换成这张图（主菜单不会多出新的一项）。想恢复原图：游戏里开发者面板「清空自定义地图」再刷新页面。';
+}
+
+// ---------- 导入 / 导出 ----------
+function toJSON(){
+  const cells = {};
+  for (const k in S.cells){
+    const c = S.cells[k], o = {};
+    if (c.g) o.g = c.g;
+    if (c.w) o.w = (c.w === 1) ? 1 : String(c.w);
+    if (o.g || o.w) cells[k] = o;
+  }
+  const out = {
+    format:'florr-map', version:1,
+    id:S.id, name:S.name, groundKind:S.groundKind, size:S.size, cell:S.cell,
+    magicOnly:!!S.magicOnly,
+    cells:cells,
+    areas:S.areas.map(a => ({ x:Math.round(a.x), y:Math.round(a.y), w:Math.round(a.w), h:Math.round(a.h),
+                              kinds:(a.kinds || []).slice(), cap:a.cap, rarity:(a.rarity == null ? null : a.rarity) })),
+    fixed:S.fixed.map(f => ({ x:Math.round(f.x), y:Math.round(f.y), kind:f.kind, rarity:f.rarity, variant:!!f.variant })),
+    portals:S.portals.map(p => { const o = { x:Math.round(p.x), y:Math.round(p.y), to:p.to };
+      if (p.tx !== undefined) o.tx = p.tx; if (p.ty !== undefined) o.ty = p.ty; return o; })
+  };
+  // 出生点只有自己摆过才写进去(没摆的话游戏里从地图正中心出生)
+  if (S.spawn) out.spawn = { x:Math.round(S.spawn.x), y:Math.round(S.spawn.y) };
+  // 代替原本的地图(花园/沙漠/…)：不写就是新增一张图
+  if (S.replaces){ out.replaces = S.replaces; if (S.replaceName) out.replaceName = S.replaceName; }
+  return JSON.stringify(out, null, 1);
+}
+$('saveBtn').addEventListener('click', () => {
+  const blob = new Blob([toJSON()], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = S.id + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  $('io').value = toJSON();
+  $('ioMsg').textContent = '已导出 ' + S.id + '.json（也可以把下面这段 JSON 直接发给我）';
+});
+$('copyBtn').addEventListener('click', async () => {
+  const txt = toJSON();
+  $('io').value = txt;
+  try { await navigator.clipboard.writeText(txt); $('ioMsg').textContent = '已复制到剪贴板，直接发给我就行'; }
+  catch(e){ $('ioMsg').textContent = '复制失败：请手动全选下面的文本复制'; }
+});
+$('loadBtn').addEventListener('click', () => {
+  try {
+    const d = JSON.parse($('io').value);
+    loadData(d);
+    $('ioMsg').textContent = '载入成功：' + S.name;
+  } catch(e){ $('ioMsg').textContent = '载入失败：' + e.message; }
+});
+$('clearBtn').addEventListener('click', () => {
+  if (!confirm('清空画布上的地面/墙/刷怪区/固定怪/传送门？')) return;
+  S.cells = {}; S.areas = []; S.fixed = []; S.portals = []; sel = null; refreshLists(); save(); draw();
+});
+$('newBtn').addEventListener('click', () => {
+  if (!confirm('新建一张空地图？')) return;
+  loadData({ id:'my_map', name:'我的地图', groundKind:'garden', size:48000, cell:480, cells:{}, areas:[], fixed:[], portals:[], spawn:null });
+  $('io').value = '';
+  $('ioMsg').textContent = '已新建空地图';
+});
+function loadData(d){
+  S.id = d.id || 'my_map';
+  S.name = d.name || '我的地图';
+  S.groundKind = GROUND_COLORS[d.groundKind] ? d.groundKind : 'garden';
+  S.size = Math.max(4000, +d.size || 48000);
+  S.cell = [240, 480, 960].indexOf(+d.cell) >= 0 ? +d.cell : 480;
+  S.magicOnly = !!d.magicOnly;
+  S.replaces = d.replaces || '';          // 代替原本哪张地图(空=作为新地图加进去)
+  S.replaceName = d.replaceName || '';
+  S.spawn = d.spawn ? { x:(+d.spawn.x || 0), y:(+d.spawn.y || 0) } : null;
+  S.cells = {};
+  for (const k in (d.cells || {})){
+    const c = d.cells[k] || {};
+    const wv = (c.w === true) ? 1 : c.w;
+    if (c.g || wv) S.cells[k] = { g:c.g, w:wv || 0 };
+  }
+  S.areas = (d.areas || []).map(a => ({ x:a.x, y:a.y, w:a.w, h:a.h, kinds:(a.kinds || []).slice(),
+    cap:a.cap || 18, rarity:(a.rarity == null ? null : a.rarity) }));
+  S.fixed = (d.fixed || []).map(f => ({ x:f.x, y:f.y, kind:f.kind, rarity:f.rarity || 0, variant:!!f.variant }));
+  S.portals = (d.portals || []).map(p => Object.assign({}, p));
+  $('fId').value = S.id; $('fName').value = S.name; $('fGround').value = S.groundKind;
+  $('fSize').value = S.size; $('fCell').value = String(S.cell); $('fMagic').checked = S.magicOnly;
+  $('fReplace').value = S.replaces; $('fReplaceName').value = S.replaceName; updateReplaceWarn();
+  sel = null; selClear(); selDrag = null; lassoPts = [];
+  refreshPortalTargets(); refreshLists(); updateSelUI(); save(); draw();
+}
+
+// ---------- 本地自动保存 ----------
+const LS = 'fflorrr_mapmaker_v1';
+let saveTimer = null;
+function save(){ clearTimeout(saveTimer); saveTimer = setTimeout(() => { try { localStorage.setItem(LS, toJSON()); } catch(e){} }, 300); }
+(function restore(){
+  let txt = null;
+  try { txt = localStorage.getItem(LS); } catch(e){}
+  if (txt){ try { loadData(JSON.parse(txt)); $('ioMsg').textContent = '已恢复上次编辑的内容'; } catch(e){} }
+  else loadData(S);
+})();
+resize(); fitView(); refreshLists(); syncBrushUI(); updateReplaceWarn(); $('status').textContent = toolLabel();
+</script>
+</body>
+</html>
