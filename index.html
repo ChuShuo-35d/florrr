@@ -358,6 +358,48 @@
 
         // ===== 存档系统 =====
         const SAVE_KEY = 'florr_save_v1';
+        // ===== 云端同步：账号 + 存档存到服务器，换设备也能登录(连不上服务器时自动退回本地) =====
+        //  API_BASE:  ''            = 与网页同源(游戏由 server.js 一起托管时用这个)
+        //             'https://xxx' = 单独的后端地址(游戏在 GitHub Pages 上时填这个)
+        //             null          = 纯本地模式(完全不走服务器)
+        const API_BASE = '';
+        const CLOUD_ON = (API_BASE !== null) && (typeof fetch === 'function');
+        const CLOUD_TOKENS_KEY = 'florr_cloud_tokens_v1';
+        let cloudTokens = {};
+        try { cloudTokens = JSON.parse(localStorage.getItem(CLOUD_TOKENS_KEY) || '{}') || {}; } catch(e){ cloudTokens = {}; }
+        function cloudSaveTokens(){ try{ localStorage.setItem(CLOUD_TOKENS_KEY, JSON.stringify(cloudTokens)); }catch(e){} }
+        function cloudTokenOf(id){ return cloudTokens[id] || null; }
+        function cloudSetToken(id, tk){ cloudTokens[id] = tk; cloudSaveTokens(); }
+        function cloudReq(path, opt){
+            opt = opt || {};
+            const headers = { 'Content-Type': 'application/json' };
+            if (opt.token) headers['Authorization'] = 'Bearer ' + opt.token;
+            return fetch((API_BASE || '') + path, { method: opt.method || 'GET', headers: headers, body: opt.body ? JSON.stringify(opt.body) : undefined })
+                .then(r => r.json().catch(() => ({ ok:false, msg:'服务器返回内容异常' })))
+                .catch(() => ({ ok:false, offline:true, msg:'连不上服务器(已按本机模式继续)' }));
+        }
+        function cloudRegister(user, pw){ return cloudReq('/api/register', { method:'POST', body:{ user:user, pw:pw } }); }
+        function cloudLogin(user, pw){ return cloudReq('/api/login', { method:'POST', body:{ user:user, pw:pw } }); }
+        function cloudChangePw(token, oldPw, newPw){ return cloudReq('/api/changepw', { method:'POST', token:token, body:{ oldPw:oldPw, newPw:newPw } }); }
+        function cloudPushSave(){
+            if (!CLOUD_ON || !accounts.current) return Promise.resolve(false);
+            const tk = cloudTokenOf(accounts.current);
+            if (!tk) return Promise.resolve(false);
+            return cloudReq('/api/save', { method:'POST', token:tk, body:{ save: serializeGame() } }).then(r => !!r.ok);
+        }
+        function cloudPullSave(){
+            if (!CLOUD_ON || !accounts.current) return Promise.resolve(false);
+            const tk = cloudTokenOf(accounts.current);
+            if (!tk) return Promise.resolve(false);
+            return cloudReq('/api/save', { token:tk }).then(r => {
+                if (!r.ok || !r.save) return false;
+                try { localStorage.setItem(saveKeyFor(accounts.current), JSON.stringify(r.save)); } catch(e){}
+                const ok = applySaveData(r.save);
+                if (ok){ try { renderEquipBar(); updateUI(); } catch(e){} toast('已从服务器同步进度'); }
+                return ok;
+            });
+        }
+        function cloudSyncOnLoad(){ if (!CLOUD_ON) return; if (!accounts.current) return; if (!cloudTokenOf(accounts.current)) return; cloudPullSave().catch(()=>{}); }
         // ===== 账号(本地)：账号 + 密码；第一个账号自动是管理员 =====
         // 账号规则：英文/数字/下划线，3~16 位。密码不存明文，只存加盐哈希(本地游戏，仅用于区分账号)。
         // 管理员(第一个注册的账号)可以把其它账号"绑定"到自己名下，绑定只是本地的归属标记。
@@ -581,7 +623,11 @@
             const a = accounts.list.filter(x => x.id === id)[0];
             if (!a) return Promise.resolve({ ok:false, msg:'账号不存在' });
             if (String(newPw || '').length < 4) return Promise.resolve({ ok:false, msg:'新密码至少 4 位' });
-            const apply = () => { const salt = randSalt(); return hashPw(newPw, salt).then(h => { a.salt = salt; a.pwHash = h; saveAccounts(); return { ok:true }; }); };
+            const apply = () => { const salt = randSalt(); return hashPw(newPw, salt).then(h => {
+                a.salt = salt; a.pwHash = h; saveAccounts();
+                if (CLOUD_ON){ const tk = cloudTokenOf(id); if (tk) cloudChangePw(tk, oldPw, newPw).catch(()=>{}); }
+                return { ok:true };
+            }); };
             if (!a.salt || !a.pwHash){
                 const okOld = a.builtin ? (String(oldPw) === BUILTIN_ADMIN.pw) : (String(oldPw || '').length === 0);
                 if (!okOld) return Promise.resolve({ ok:false, msg: a.builtin ? '旧密码不对' : '这个账号还没设过密码，旧密码留空即可' });
@@ -679,6 +725,7 @@
             try{
                 if(!accounts.current) return false;
                 localStorage.setItem(saveKeyFor(accounts.current), JSON.stringify(serializeGame()));
+                if (CLOUD_ON && accounts.current && cloudTokenOf(accounts.current)) cloudPushSave().catch(()=>{});
                 if(showMsg) toast('存档已保存');
                 return true;
             }catch(e){ if(showMsg) toast('保存失败'); return false; }
@@ -687,8 +734,13 @@
             try{
                 const raw = accounts.current ? localStorage.getItem(saveKeyFor(accounts.current)) : null;
                 if(!raw) return false;
-                const d = JSON.parse(raw);
+                return applySaveData(JSON.parse(raw));
+            }catch(e){ return false; }
+        }
+        function applySaveData(d){
+            try{
                 if(!d || d.v !== 1) return false;
+
                 playerLevel = d.playerLevel || 0;
                 playerExp = d.playerExp || 0;
                 expToLevel = expNeededForLevel(playerLevel);
@@ -714,7 +766,7 @@
                 redistributeAngles(); renderEquipBar();
                 if (activeModal === 'bag') renderBagGrid();
                 if (activeModal === 'talent') renderTalentPanel();
-                return true;
+                                return true;
             }catch(e){ return false; }
         }
         function clearGameSave(){
@@ -4398,7 +4450,7 @@ for(let mis of beeMissiles) if(mis.alive){ let s=worldToScreen(mis.x,mis.y);
             window.addEventListener('pointerup',()=>{ draggedMonster=null; });
         }
 
-        function init(){loadAccounts();loadPickupRecord();loadTextures();loadCustomMaps();setupInputGuards();resizeCanvas();window.addEventListener('resize',resizeCanvas);window.addEventListener('beforeunload',()=>saveGame(false));document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')saveGame(false);});for(let i=0;i<INIT_SLOTS*2;i++)equippedSlots.push(null);for(let t=0;t<4;t++)for(let j=0;j<5;j++)addToBackpack(t,0);for(let i=0;i<10;i++)addToBackpack(4,0);addToBackpack(6,0);addToBackpack(6,1);equipPetal(0,0,0);equipPetal(1,1,0);equipPetal(2,2,0);equipPetal(3,3,0);dummies=[];loadGame();renderEquipBar();setupJoystick();setupAttackButton();setupSpeedControl();setupMainMenu();openMainMenu(1,{kind:'world',mapId:'world'});updateUI();updateAccountBtn();if(!accounts.current)openLoginGate();requestAnimationFrame(gameLoop);}
+        function init(){loadAccounts();loadPickupRecord();loadTextures();loadCustomMaps();setupInputGuards();resizeCanvas();window.addEventListener('resize',resizeCanvas);window.addEventListener('beforeunload',()=>saveGame(false));document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')saveGame(false);});for(let i=0;i<INIT_SLOTS*2;i++)equippedSlots.push(null);for(let t=0;t<4;t++)for(let j=0;j<5;j++)addToBackpack(t,0);for(let i=0;i<10;i++)addToBackpack(4,0);addToBackpack(6,0);addToBackpack(6,1);equipPetal(0,0,0);equipPetal(1,1,0);equipPetal(2,2,0);equipPetal(3,3,0);dummies=[];loadGame();renderEquipBar();setupJoystick();setupAttackButton();setupSpeedControl();setupMainMenu();openMainMenu(1,{kind:'world',mapId:'world'});updateUI();updateAccountBtn();if(!accounts.current)openLoginGate();cloudSyncOnLoad();requestAnimationFrame(gameLoop);}
         // ============================================================
         // ===== 主菜单 / 地图地形 / 死亡系统 =====
         // ============================================================
