@@ -488,6 +488,19 @@
         }
         // 注册：第一个账号自动是管理员
         function registerAccount(user, pw){
+            if (CLOUD_ON){
+                return cloudRegister(user, pw).then(cr => {
+                    if (!cr.ok && !cr.offline) return { ok:false, msg:(cr.msg || '服务器拒绝了注册') };
+                    return registerAccountLocal(user, pw).then(r => {
+                        if (r.ok && cr.token) cloudSetToken(r.id, cr.token);
+                        if (cr.offline) r.msg = '（服务器连不上，先存在本机）';
+                        return r;
+                    });
+                });
+            }
+            return registerAccountLocal(user, pw);
+        }
+        function registerAccountLocal(user, pw){
             const err = checkUser(user);
             if (err) return Promise.resolve({ ok:false, msg:err });
             if (String(pw || '').length < 4) return Promise.resolve({ ok:false, msg:'密码至少 4 位' });
@@ -503,6 +516,19 @@
         }
         // 登录：校验密码；没设过密码的老账号允许空密码直接进
         function loginAccount(user, pw){
+            if (CLOUD_ON){
+                return cloudLogin(user, pw).then(cl => {
+                    if (!cl.ok && !cl.offline) return { ok:false, msg:(cl.msg || '账号或密码不对') };
+                    return loginAccountLocal(user, pw).then(r => {
+                        if (r.ok && cl.token) cloudSetToken(r.id, cl.token);
+                        if (cl.offline) r.msg = '（服务器连不上，先按本机登录）';
+                        return r;
+                    });
+                });
+            }
+            return loginAccountLocal(user, pw);
+        }
+        function loginAccountLocal(user, pw){
             const a = findUser(user);
             if (!a) return Promise.resolve({ ok:false, msg:'没有这个账号' });
             if (!a.salt || !a.pwHash){
