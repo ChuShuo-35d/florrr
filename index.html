@@ -1717,11 +1717,11 @@
                 }
             },
             bush: { name: '灌木丛', dropKey: 'bush', minRadius: 0,          // 丛林：不动、可被推
-                stats(m, r){ m.maxHp = monsterBaseHP * rarityMult(r) / 3; m.hp = m.maxHp; m.dmg = 10 * rarityDmgMult(r) / 3; },
+                stats(m, r){ m.maxHp = monsterBaseHP * rarityMult(r) / 30; m.hp = m.maxHp; m.dmg = 10 * rarityDmgMult(r) / 3; },
                 update(m, dt, px, py){ m.pushVX *= Math.exp(-6*dt); m.pushVY *= Math.exp(-6*dt); monsterMoveBy(m, m.pushVX*dt, m.pushVY*dt); },
                 draw(m, s, r, ds){ drawCreatureCircle(m, s, r, ds, '#2f6b28'); } },
             leafbug: { name: '叶虫', dropKey: 'leafbug', contactDmg: true,
-                stats(m, r){ m.maxHp = monsterBaseHP * rarityMult(r) * 5 / 3; m.hp = m.maxHp; m.dmg = 10 * rarityDmgMult(r); },
+                stats(m, r){ m.maxHp = monsterBaseHP * rarityMult(r) * 5 / 30; m.hp = m.maxHp; m.dmg = 10 * rarityDmgMult(r); },
                 update(m, dt, px, py){ CREATURE_DEFS.normal.update(m, dt, px, py); },
                 draw(m, s, r, ds){ drawCreatureCircle(m, s, r, ds, '#7cb342'); } },
             goldleafbug: { name: '黄金叶虫', dropKey: 'goldleafbug', contactDmg: true,   // 数值与叶虫完全相同，掉落金色叶子 + 根
@@ -1729,7 +1729,7 @@
                 update(m, dt, px, py){ CREATURE_DEFS.leafbug.update(m, dt, px, py); },
                 draw(m, s, r, ds){ drawCreatureCircle(m, s, r, ds, '#ffd93b'); } },
             ladybug: { name: '瓢虫', dropKey: 'ladybug', contactDmg: true,
-                stats(m, r){ m.maxHp = monsterBaseHP * rarityMult(r) * 0.9; m.hp = m.maxHp; m.dmg = 10 * rarityDmgMult(r) * 0.9; },
+                stats(m, r){ m.maxHp = monsterBaseHP * rarityMult(r) * 0.9; m.hp = m.maxHp; m.dmg = 10 * rarityDmgMult(r) * 0.09; },
                 update(m, dt, px, py){ CREATURE_DEFS.normal.update(m, dt, px, py); },
                 draw(m, s, r, ds){ drawCreatureCircle(m, s, r, ds, '#e53935'); } },
             goldladybug: { name: '黄金瓢虫', dropKey: 'goldladybug', contactDmg: true,
@@ -1741,7 +1741,7 @@
                 update(m, dt, px, py){ CREATURE_DEFS.normal.update(m, dt, px, py); if (equipHasType(26)) m.rotFlip = true; },
                 draw(m, s, r, ds){ drawCreatureCircle(m, s, r, ds, '#37474f'); } },
             leech: { name: '水蛭', dropKey: 'leech', contactDmg: true,
-                stats(m, r){ m.maxHp = monsterBaseHP * rarityMult(r) * 2; m.hp = m.maxHp; m.dmg = 10 * rarityDmgMult(r) * 2; m.segs = 8; },
+                stats(m, r){ m.maxHp = monsterBaseHP * rarityMult(r) * 2; m.hp = m.maxHp; m.dmg = 10 * rarityDmgMult(r) * 0.2; m.segs = 8; },
                 update(m, dt, px, py){ CREATURE_DEFS.normal.update(m, dt, px, py); },
                 draw(m, s, r, ds){
                     const seg = r * 0.2;
@@ -1749,11 +1749,11 @@
                     drawMonsterBar(m, s, r + 8);
                 } },
             sponge: { name: '海绵', dropKey: 'sponge',
-                stats(m, r){ m.maxHp = monsterBaseHP * rarityMult(r); m.hp = m.maxHp; m.dmg = 10 * rarityDmgMult(r); },
+                stats(m, r){ m.maxHp = monsterBaseHP * rarityMult(r)/30; m.hp = m.maxHp; m.dmg = 10 * rarityDmgMult(r); },
                 update(m, dt, px, py){ m.pushVX *= Math.exp(-6*dt); m.pushVY *= Math.exp(-6*dt); monsterMoveBy(m, m.pushVX*dt, m.pushVY*dt); },
                 draw(m, s, r, ds){ drawCreatureCircle(m, s, r, ds, '#00ced1'); } },
             virus: { name: '病毒', dropKey: 'virus',
-                stats(m, r){ m.maxHp = monsterBaseHP * rarityMult(r) * 3.5; m.hp = m.maxHp; m.dmg = 10 * rarityDmgMult(r) * 4; },
+                stats(m, r){ m.maxHp = monsterBaseHP * rarityMult(r) * 0.35; m.hp = m.maxHp; m.dmg = 10 * rarityDmgMult(r) * 4; },
                 update(m, dt, px, py){ m.pushVX *= Math.exp(-6*dt); m.pushVY *= Math.exp(-6*dt); monsterMoveBy(m, m.pushVX*dt, m.pushVY*dt); },   // 病毒不移动，只被推动
                 draw(m, s, r, ds){
                     ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, Math.PI*2); ctx.fillStyle = '#7b1fa2'; ctx.fill();
@@ -1761,7 +1761,7 @@
                     drawMonsterBar(m, s, r + 8);
                 } },
             mechflower: { name: '机械花', dropKey: 'mechflower', keepsOwnAngle: true,   // 本体自己朝向玩家
-                stats(m, r){ m.maxHp = monsterBaseHP * rarityMult(r) * 3; m.hp = m.maxHp; m.armor = Math.round(m.maxHp / 50); m.dmg = 10 * rarityDmgMult(r) * 7; m.gearAng = 0; initMechGears(m); },
+                stats(m, r){ m.maxHp = monsterBaseHP * rarityMult(r) * 0.3; m.hp = m.maxHp; m.armor = Math.round(m.maxHp / 50); m.dmg = 10 * rarityDmgMult(r) * 7; m.gearAng = 0; initMechGears(m); },
                 update(m, dt, px, py){ updateMechflower(m, dt, px, py); },
                 draw(m, s, r, ds){
                     const verts = mechflowerVertices(s.x, s.y, r, m.gearAng||0);
@@ -1773,7 +1773,7 @@
                     drawMonsterBar(m, s, r + 8);
                 } },
             blackhole: { name: '黑洞', dropKey: 'blackhole',
-                stats(m, r){ m.maxHp = monsterBaseHP * rarityMult(r) * 10; m.hp = m.maxHp; m.dmg = 10 * rarityDmgMult(r) * 20; },
+                stats(m, r){ m.maxHp = monsterBaseHP * rarityMult(r) * 10; m.hp = m.maxHp; m.dmg = 1 * rarityDmgMult(r) * 20; },
                 update(m, dt, px, py){
                     m.pushVX *= Math.exp(-3*dt); m.pushVY *= Math.exp(-3*dt);
                     monsterMoveBy(m, m.pushVX*dt, m.pushVY*dt);
@@ -1789,7 +1789,7 @@
                 } },
             bubble: {
                 name: '泡泡', magicKind: 'magicBubble', dropKey: 'bubble', minRadius: 12, contactDmg: true,
-                stats(m, r){ m.maxHp = 1; m.hp = 1; m.dmg = 1; },     // 泡泡：血量1、伤害1
+                stats(m, r){ CREATURE_DEFS.normal.stats(m, r); m.maxHp *= 0.1; m.hp = m.maxHp; m.dmg *= 0.1; },
                 update(m, dt, px, py){
                     m.pushVX *= Math.exp(-6*dt); m.pushVY *= Math.exp(-6*dt);   // 不自己移动，只被推动
                     monsterMoveBy(m, m.pushVX*dt, m.pushVY*dt);
