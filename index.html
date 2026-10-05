@@ -1650,7 +1650,7 @@
                 stats(m, r){
                     m.maxHp = monsterBaseHP * rarityMult(r);
                     if (r >= 5) m.maxHp *= 4;
-                    if (r <= 4) m.maxHp /= 3;      // 传奇以下(普通~史诗)血量/3
+                    if (r <= 4) m.maxHp /= 30;      // 传奇以下(普通~史诗)血量/3
                     m.hp = m.maxHp;
                     m.dmg = 10 * rarityDmgMult(r);   // 唯一只按终末10倍算伤害
                 },
